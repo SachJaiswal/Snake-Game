@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Snake Game</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(to bottom right, #4CAF50, #2196F3);
+        }
+        #game-container {
+            text-align: center;
+            background-color: rgba(255, 255, 255, 0.9);
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.2);
+            position: relative;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        #gameCanvas {
+            border: 2px solid #333;
+            border-radius: 5px;
+        }
+        #score {
+            font-size: 24px;
+            margin-top: 10px;
+            color: #333;
+        }
+        #difficulty-selector {
+            margin-bottom: 20px;
+        }
+        select {
+            padding: 5px;
+            font-size: 16px;
+            border-radius: 5px;
+            border: 1px solid #333;
+            background-color: #f9f9f9;
+            color: #333;
+            outline: none;
+            transition: background-color 0.3s;
+        }
+        select:focus {
+            background-color: #e0e0e0;
+        }
+        /* Custom alert styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.4);
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 15% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 300px;
+            text-align: center;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        .close-button {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close-button:hover,
+        .close-button:focus {
+            color: #000;
+            text-decoration: none;
+            cursor: pointer;
+        }
+        .restart-button {
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            padding: 15px 32px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 4px 2px;
+            cursor: pointer;
+            border-radius: 5px;
+            transition: background-color 0.3s;
+        }
+        .restart-button:hover {
+            background-color: #45a049;
+        }
+        #startMessage {
+            font-size: 18px;
+            color: #333;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <h1>Snake Game</h1>
+        <div id="difficulty-selector">
+            <label for="difficulty">Select Difficulty:</label>
+            <select id="difficulty">
+                <option value="easy">Easy</option>
+                <option value="medium">Medium</option>
+                <option value="hard">Hard</option>
+            </select>
+        </div>
+        <canvas id="gameCanvas" width="400" height="400"></canvas>
+        <div id="score">Score: 0</div>
+        <div id="startMessage">Press Enter to Start the Game</div>
+    </div>
+
+    <!-- Custom alert modal -->
+    <div id="gameOverModal" class="modal">
+        <div class="modal-content">
+            <span class="close-button">&times;</span>
+            <h2>Game Over!</h2>
+            <p id="finalScore"></p>
+            <button class="restart-button" onclick="restartGame()">Play Again</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreElement = document.getElementById('score');
+        const difficultySelect = document.getElementById('difficulty');
+        const startMessage = document.getElementById('startMessage');
+
+        const gridSize = 20;
+        const tileCount = canvas.width / gridSize;
+
+        let snake = [
+            {x: 10, y: 10},
+            {x: 9, y: 10},
+            {x: 8, y: 10}
+        ];
+        let food = {x: 15, y: 15};
+        let dx = 0;
+        let dy = 0;
+        let score = 0;
+
+        let gameSpeed = 200;
+
+        let gameLoop;
+        let gameStarted = false;
+        let changingDirection = false;  // Prevent direction changes within one frame
+
+        difficultySelect.addEventListener('change', updateDifficulty);
+
+        document.addEventListener('keydown', startGame);
+
+        function startGame(event) {
+            if (event.key === 'Enter' && !gameStarted) {
+                dx = 1;
+                dy = 0;
+                startMessage.style.display = 'none';
+                gameLoop = setInterval(drawGame, gameSpeed);
+                gameStarted = true;
+                document.addEventListener('keydown', changeDirection); // Add arrow key event listener
+            }
+        }
+
+        function updateDifficulty() {
+            const difficulty = difficultySelect.value;
+            switch(difficulty) {
+                case 'easy':
+                    gameSpeed = 200;
+                    break;
+                case 'medium':
+                    gameSpeed = 150;
+                    break;
+                case 'hard':
+                    gameSpeed = 100;
+                    break;
+            }
+            if (gameStarted) {
+                clearInterval(gameLoop);
+                gameLoop = setInterval(drawGame, gameSpeed);
+            }
+        }
+
+        function drawGame() {
+            clearCanvas();
+            moveSnake();
+            drawSnake();
+            drawFood();
+            checkCollision();
+            updateScore();
+            changingDirection = false; // Reset direction change flag
+        }
+
+        function clearCanvas() {
+            ctx.fillStyle = '#FFFFED';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+
+        function moveSnake() {
+            const head = {x: snake[0].x + dx, y: snake[0].y + dy};
+            snake.unshift(head);
+            if (head.x === food.x && head.y === food.y) {
+                score++;
+                generateFood();
+            } else {
+                snake.pop();
+            }
+        }
+
+        function drawSnake() {
+            snake.forEach((segment, index) => {
+                ctx.fillStyle = index === 0 ? '#00FF00' : '#008000';
+                ctx.fillRect(segment.x * gridSize, segment.y * gridSize, gridSize - 2, gridSize - 2);
+            });
+        }
+
+        function drawFood() {
+            ctx.fillStyle = '#FF0000';
+            ctx.beginPath();
+            ctx.arc(food.x * gridSize + gridSize / 2, food.y * gridSize + gridSize / 2, gridSize / 2, 0, 2 * Math.PI);
+            ctx.fill();
+        }
+
+        function generateFood() {
+            food.x = Math.floor(Math.random() * tileCount);
+            food.y = Math.floor(Math.random() * tileCount);
+        }
+
+        function checkCollision() {
+            if (snake[0].x < 0 || snake[0].x >= tileCount || snake[0].y < 0 || snake[0].y >= tileCount) {
+                gameOver();
+            }
+            for (let i = 1; i < snake.length; i++) {
+                if (snake[i].x === snake[0].x && snake[i].y === snake[0].y) {
+                    gameOver();
+                }
+            }
+        }
+
+        function changeDirection(event) {
+            const LEFT_KEY = 37;
+            const RIGHT_KEY = 39;
+            const UP_KEY = 38;
+            const DOWN_KEY = 40;
+
+            if (changingDirection) return; // Prevent multiple direction changes within one frame
+
+            const goingUp = dy === -1;
+            const goingDown = dy === 1;
+            const goingRight = dx === 1;
+            const goingLeft = dx === -1;
+
+            switch(event.keyCode) {
+                case LEFT_KEY:
+                    if (!goingRight) {
+                        dx = -1;
+                        dy = 0;
+                    }
+                    break;
+                case RIGHT_KEY:
+                    if (!goingLeft) {
+                        dx = 1;
+                        dy = 0;
+                    }
+                    break;
+                case UP_KEY:
+                    if (!goingDown) {
+                        dx = 0;
+                        dy = -1;
+                    }
+                    break;
+                case DOWN_KEY:
+                    if (!goingUp) {
+                        dx = 0;
+                        dy = 1;
+                    }
+                    break;
+            }
+            changingDirection = true; // Set direction change flag
+        }
+
+        function gameOver() {
+            const modal = document.getElementById('gameOverModal');
+            const finalScoreElement = document.getElementById('finalScore');
+            finalScoreElement.textContent = 'Your score: ' + score;
+            clearInterval(gameLoop);
+            modal.style.display = 'block';
+        }
+
+        function updateScore() {
+            scoreElement.textContent = 'Score: ' + score;
+        }
+
+        function restartGame() {
+            snake = [
+                {x: 10, y: 10},
+                {x: 9, y: 10},
+                {x: 8, y: 10}
+            ];
+            dx = 0;
+            dy = 0;
+            score = 0;
+            gameStarted = false;
+            startMessage.style.display = 'block';
+            const modal = document.getElementById('gameOverModal');
+            modal.style.display = "none";
+        }
+        const closeButton = document.querySelector(".close-button");
+const modal = document.getElementById('gameOverModal');
+
+closeButton.onclick = function() {
+    modal.style.display = "none";
+}
+
+window.onclick = function(event) {
+    if (event.target === modal) {
+        modal.style.display = "none";
+    }
+}
+
+
+        startMessage.style.display = 'block'; // Show start message initially
+    </script>
+</body>
+</html>
